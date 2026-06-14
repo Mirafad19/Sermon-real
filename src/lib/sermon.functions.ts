@@ -46,7 +46,7 @@ export const transcribeSermonAudio = createServerFn({ method: "POST" })
         throw new Error("The AI service is busy. Please wait a moment and try again.");
       if (message.includes("not configured") || message.includes("configured yet")) throw error;
       throw new Error(
-        `We could not transcribe that recording: ${message}. Try an MP3, WAV, M4A, or WebM file under 20 MB.`,
+        `We could not transcribe that recording: ${message}. Try an MP3, WAV, M4A, or WebM file under 24 MB.`,
       );
     }
   });

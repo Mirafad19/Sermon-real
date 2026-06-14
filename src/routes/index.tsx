@@ -7,6 +7,7 @@ import {
   Download,
   FileAudio,
   FileText,
+  Info,
   Mic,
   Presentation,
   Radio,
@@ -93,6 +94,7 @@ function Index() {
   const [slides, setSlides] = useState<SermonSlide[]>([]);
   const [showSlides, setShowSlides] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showCompressionHelp, setShowCompressionHelp] = useState(false);
 
   useEffect(() => {
     if (!isRecording) return;
@@ -197,9 +199,12 @@ function Index() {
   };
 
   const uploadAudio = async (file: File) => {
-    const maxBytes = 20 * 1024 * 1024;
+    const maxBytes = 24 * 1024 * 1024;
     if (file.size > maxBytes) {
-      setError("That recording is over 20 MB. Please compress or split it, then upload again.");
+      setError(
+        "That recording is over 24 MB. Serverless container channels restrict uploads to 24 MB maximum. Please click 'Compress tips' below to easily shrink your full sermon under 24 MB!"
+      );
+      setShowCompressionHelp(true);
       return;
     }
 
@@ -401,7 +406,7 @@ function Index() {
                     </Button>
                   )}
                 </div>
-                <div className="mt-4 rounded-2xl border border-sanctuary-foreground/15 bg-background/5 p-4">
+                <div className="mt-4 rounded-2xl border border-sanctuary-foreground/15 bg-background/5 p-4 animate-fade-in">
                   <input
                     ref={audioInputRef}
                     type="file"
@@ -419,9 +424,19 @@ function Index() {
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-semibold">Already recorded the sermon?</p>
-                        <p className="truncate text-xs text-sanctuary-foreground/60">
-                          {uploadedAudioName || "Upload MP3, WAV, M4A, OGG or WebM · up to 20 MB"}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-xs text-sanctuary-foreground/60">
+                            {uploadedAudioName || "Format: MP3, WAV, M4A, OGG, WebM · up to 24 MB"}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setShowCompressionHelp(!showCompressionHelp)}
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary-foreground underline hover:opacity-85 transition-opacity"
+                            title="Tips to compress long audio files"
+                          >
+                            <Info className="size-3" /> Compress tips
+                          </button>
+                        </div>
                       </div>
                     </div>
                     <Button
@@ -434,6 +449,45 @@ function Index() {
                       {isTranscribingUpload ? "Transcribing…" : "Upload audio"}
                     </Button>
                   </div>
+
+                  {showCompressionHelp && (
+                    <div className="mt-4 border-t border-sanctuary-foreground/10 pt-4 text-xs text-sanctuary-foreground/80 space-y-3 animate-fade-in">
+                      <p className="font-semibold text-primary-foreground flex items-center gap-1.5">
+                        💡 How to fit a 1+ hour sermon under 24 MB:
+                      </p>
+                      <ul className="list-disc list-inside space-y-2 pl-1 bg-background/10 rounded-xl p-3 border border-sanctuary-foreground/5 text-sanctuary-foreground/75">
+                        <li>
+                          <strong className="text-primary-foreground">Choose Mono, NOT Stereo:</strong> Sermons are voice-only. Converting stereo to mono instantly cuts your file size in half without any clarity loss!
+                        </li>
+                        <li>
+                          <strong className="text-primary-foreground">Lower the Bitrate:</strong> Speech has low complexity. Encoding at <span className="font-mono bg-background/20 px-1 py-0.5 rounded text-white text-[10px]">32 kbps</span> or <span className="font-mono bg-background/20 px-1 py-0.5 rounded text-white text-[10px]">64 kbps</span> mono can make a 1-hour sermon as small as 14 MB (instead of 100+ MB) while sounding perfect to Gemini!
+                        </li>
+                        <li>
+                          <strong className="text-primary-foreground">Use Space-Saving Formats:</strong> Convert your audio to <span className="font-mono bg-background/20 px-1.5 py-0.5 rounded text-white">MP3</span>, <span className="font-mono bg-background/20 px-1.5 py-0.5 rounded text-white">M4A</span>, or <span className="font-mono bg-background/20 px-1.5 py-0.5 rounded text-white">OGG/WebM</span>.
+                        </li>
+                        <li>
+                          <span className="font-semibold text-primary-foreground">Recommended free tools:</span> drag and drop your file into{" "}
+                          <a
+                            href="https://123apps.com/audio-converter"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline text-primary-foreground font-semibold hover:opacity-85"
+                          >
+                            123apps Audio Converter
+                          </a>{" "}
+                          to compress online instantly, or use free software like{" "}
+                          <a
+                            href="https://www.audacityteam.org/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline text-primary-foreground font-semibold hover:opacity-85"
+                          >
+                            Audacity
+                          </a> on your laptop.
+                        </li>
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="border-t border-sanctuary-foreground/10 bg-background/5 px-6 py-4 text-xs leading-5 text-sanctuary-foreground/70 sm:px-8">
