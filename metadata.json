@@ -1,0 +1,6 @@
+{
+  "name": "Sermon Sync",
+  "description": "Record, transcribe, and summarize sermons for RCCG Love Assembly Area.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
