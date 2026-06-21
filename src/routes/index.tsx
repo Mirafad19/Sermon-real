@@ -95,6 +95,7 @@ function Index() {
   const [showSlides, setShowSlides] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showCompressionHelp, setShowCompressionHelp] = useState(false);
+  const [recordedMimeType, setRecordedMimeType] = useState("audio/webm");
 
   useEffect(() => {
     if (!isRecording) return;
@@ -125,26 +126,67 @@ function Index() {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
       setAudioUrl("");
 
-      const recorder = new MediaRecorder(stream);
+      // Find the best mimeType supported by this browser to avoid corrupted formats
+      const mimeTypes = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/ogg;codecs=opus",
+        "audio/mp4",
+        "audio/aac",
+      ];
+      let selectedMime = "audio/webm";
+      let options: { mimeType?: string } = {};
+      for (const mime of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(mime)) {
+          options = { mimeType: mime };
+          selectedMime = mime;
+          break;
+        }
+      }
+
+      const recorder = new MediaRecorder(stream, options);
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       };
+      
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
-        setAudioUrl(URL.createObjectURL(blob));
+        const actualMime = recorder.mimeType || selectedMime;
+        setRecordedMimeType(actualMime);
+        const blob = new Blob(chunksRef.current, { type: actualMime });
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
+
+        // Turn off the hardware mic tracks now that media recorder has fully flushed
+        stream.getTracks().forEach((track) => track.stop());
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+        }
+
+        // Auto-download to make absolutely sure they don't lose the sermon live record
+        const ext = actualMime.includes("mp4") ? "mp4" : actualMime.includes("ogg") ? "ogg" : "webm";
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `sermon-live-backup-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.${ext}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       };
+
       recorder.start(1000);
       recorderRef.current = recorder;
 
+      // Initialize Web SpeechRecognition as completely optional
       const browserWindow = window as typeof window & {
         SpeechRecognition?: SpeechRecognitionConstructor;
         webkitSpeechRecognition?: SpeechRecognitionConstructor;
       };
       const Recognition = browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition;
       if (!Recognition) {
-        recorder.stop();
-        stream.getTracks().forEach((track) => track.stop());
-        throw new Error("Live transcription needs Chrome or Edge on this device.");
+        console.warn("SpeechRecognition not supported on this browser. Falling back to high-fidelity audio record only.");
+        setInterim("(Speech detection not supported on this browser - recording audio safely)");
+        setIsRecording(true);
+        return;
       }
 
       const recognition = new Recognition();
@@ -166,7 +208,7 @@ function Index() {
       };
       recognition.onerror = (event) => {
         if (event.error !== "no-speech" && event.error !== "aborted") {
-          setError(`Transcription paused: ${event.error}. The audio recording is still safe.`);
+          console.warn(`Speech recognition status: ${event.error}`);
         }
       };
       recognition.onend = () => {
@@ -183,26 +225,53 @@ function Index() {
       recognitionRef.current = recognition;
       setIsRecording(true);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "We could not access the microphone.");
+      const err = caught instanceof Error ? caught : new Error(String(caught));
+      const message = err.message || "";
+      const name = err.name || "";
+      
+      if (
+        name === "NotAllowedError" ||
+        message.toLowerCase().includes("permission") ||
+        message.toLowerCase().includes("allowed") ||
+        message.toLowerCase().includes("denied")
+      ) {
+        setError(
+          "Microphone permission was blocked. 🔒 To start recording, please click the lock/settings icon next to the URL address bar in your browser, switch Microphone permission to 'Allow', and refresh. If you are in the AI Studio preview window, click the 'Open in new tab' button in the top right to grant permissions securely!"
+        );
+      } else {
+        setError(`Could not access microphone: ${message}`);
+      }
     }
   };
 
   const stopRecording = () => {
     shouldListenRef.current = false;
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    if (recorderRef.current?.state !== "inactive") recorderRef.current?.stop();
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        /* ignore standard interruption */
+      }
+      recognitionRef.current = null;
+    }
+    
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      try {
+        recorderRef.current.stop();
+      } catch {
+        /* ignore standard stop */
+      }
+    }
+    
     setInterim("");
     setIsRecording(false);
   };
 
   const uploadAudio = async (file: File) => {
-    const maxBytes = 24 * 1024 * 1024;
+    const maxBytes = 30 * 1024 * 1024;
     if (file.size > maxBytes) {
       setError(
-        "That recording is over 24 MB. Serverless container channels restrict uploads to 24 MB maximum. Please click 'Compress tips' below to easily shrink your full sermon under 24 MB!"
+        "That recording is over 30 MB. Serverless container channels restrict uploads to 30 MB maximum. Please click 'Compress tips' below to easily shrink your full sermon under 30 MB!"
       );
       setShowCompressionHelp(true);
       return;
@@ -365,7 +434,7 @@ function Index() {
                     {elapsed}
                   </p>
                   <p className="mt-3 text-sm text-sanctuary-foreground/65">
-                    {isRecording ? "Listening and transcribing" : "Waiting for the sermon"}
+                    {isRecording ? (recognitionRef.current ? "Listening and transcribing live" : "Recording high-fidelity audio") : "Waiting for the sermon"}
                   </p>
                   <div
                     className="mx-auto mt-7 flex h-14 max-w-sm items-center justify-center gap-1"
@@ -399,7 +468,7 @@ function Index() {
                     <Button variant="quiet" size="xl" asChild>
                       <a
                         href={audioUrl}
-                        download={`sermon-${new Date().toISOString().slice(0, 10)}.webm`}
+                        download={`sermon-${new Date().toISOString().slice(0, 10)}.${recordedMimeType.includes("mp4") ? "mp4" : recordedMimeType.includes("ogg") ? "ogg" : "webm"}`}
                       >
                         <Download /> Audio
                       </a>
@@ -426,7 +495,7 @@ function Index() {
                         <p className="text-sm font-semibold">Already recorded the sermon?</p>
                         <div className="flex items-center gap-2">
                           <p className="truncate text-xs text-sanctuary-foreground/60">
-                            {uploadedAudioName || "Format: MP3, WAV, M4A, OGG, WebM · up to 24 MB"}
+                            {uploadedAudioName || "Format: MP3, WAV, M4A, OGG, WebM · up to 30 MB"}
                           </p>
                           <button
                             type="button"
@@ -453,7 +522,7 @@ function Index() {
                   {showCompressionHelp && (
                     <div className="mt-4 border-t border-sanctuary-foreground/10 pt-4 text-xs text-sanctuary-foreground/80 space-y-3 animate-fade-in">
                       <p className="font-semibold text-primary-foreground flex items-center gap-1.5">
-                        💡 How to fit a 1+ hour sermon under 24 MB:
+                        💡 How to fit a 1+ hour sermon under 30 MB:
                       </p>
                       <ul className="list-disc list-inside space-y-2 pl-1 bg-background/10 rounded-xl p-3 border border-sanctuary-foreground/5 text-sanctuary-foreground/75">
                         <li>
